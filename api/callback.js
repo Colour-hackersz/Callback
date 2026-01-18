@@ -1,37 +1,50 @@
-export default function handler(req, res) {
+export default async function handler(req, res) {
   try {
-    const { userid, amount } = req.query;
+    const data = req.body;
 
-    if (!userid || !amount) {
-      return res.status(400).json({ error: "Missing userid or amount" });
+    // Log incoming callback for debugging
+    console.log("Callback Data:", data);
+
+    // REQUIRED FIELDS FROM OXAPAY
+    const track_id = data.track_id;
+    const status = data.status; // Example: "Paid"
+    const amount = data.amount;
+    const order_id = data.order_id; // We used: PAY-<userid>-<amount>
+
+    // Extract user.id from order_id format: PAY-12345678-5
+    const parts = order_id.split("-");
+    const userId = parts[1];  // <userid>
+    const userAmount = parts[2]; // <amount like 5,10,20,50>
+
+    // Only proceed if payment is completed
+    if (status === "Paid") {
+      console.log("Payment confirmed for user:", userId);
+
+      // TELEGRAM BOT API
+      const BOT_TOKEN = process.env.BOT_TOKEN;
+      const chatId = userId;
+
+      // Determine mode based on amount
+      let mode = "";
+      if (userAmount == 10) mode = "v2";
+      if (userAmount == 20) mode = "v3";
+      if (userAmount == 50) mode = "v4";
+
+      // Run /done command
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `/done ${mode}`,
+          parse_mode: "Markdown"
+        })
+      });
     }
 
-    // HARD-CODED VALUES
-    const BOT_TOKEN = "8130539719:AAGnIZSlYg8P8m3WqYl3w5tryS421BmYAJU";
-    const OWNER_ID = "7312879030";
-
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    const text = `/add ${userid} ${amount}`;
-
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: OWNER_ID,
-        text: text
-      })
-    });
-
-    return res.status(200).json({
-      ok: true,
-      userid,
-      amount,
-      note: "Callback processed"
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      error: error.toString()
-    });
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.log("Callback ERROR:", err);
+    res.status(500).json({ ok: false, error: err.toString() });
   }
 }
