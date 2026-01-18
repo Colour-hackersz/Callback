@@ -9,7 +9,7 @@ export default function handler(req, res) {
   // 🔹 CALL YOUR BOT API HERE
   // ================================
   
-  const botToken = "YOUR_BOT_TOKEN";
+  const botToken = "8130539719:AAGnIZSlYg8P8m3WqYl3w5tryS421BmYAJU";
   const command = `/add ${userid} ${amount}`;
   
   // Use Telegram sendMessage to bot for internal processing
