@@ -1,26 +1,37 @@
 export default function handler(req, res) {
-  const { userid, amount } = req.query; // URL params
+  try {
+    const { userid, amount } = req.query;
 
-  if (!userid || !amount) {
-    return res.status(400).json({ error: "missing parameters" });
+    if (!userid || !amount) {
+      return res.status(400).json({ error: "Missing userid or amount" });
+    }
+
+    // HARD-CODED VALUES
+    const BOT_TOKEN = "8130539719:AAGnIZSlYg8P8m3WqYl3w5tryS421BmYAJU";
+    const OWNER_ID = "7312879030";
+
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    const text = `/add ${userid} ${amount}`;
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: OWNER_ID,
+        text: text
+      })
+    });
+
+    return res.status(200).json({
+      ok: true,
+      userid,
+      amount,
+      note: "Callback processed"
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      error: error.toString()
+    });
   }
-
-  // ================================
-  // 🔹 CALL YOUR BOT API HERE
-  // ================================
-  
-  const botToken = "8130539719:AAGnIZSlYg8P8m3WqYl3w5tryS421BmYAJU";
-  const command = `/add ${userid} ${amount}`;
-  
-  // Use Telegram sendMessage to bot for internal processing
-  fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: YOUR_ADMIN_CHAT_ID,
-      text: command
-    })
-  }).catch(err => console.log("Bot Call Error:", err));
-
-  return res.status(200).json({ status: "ok", userid, amount });
 }
