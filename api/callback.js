@@ -1,50 +1,59 @@
 export default async function handler(req, res) {
   try {
-    const data = req.body;
+    const body = req.body;
 
-    // Log incoming callback for debugging
-    console.log("Callback Data:", data);
+    // Debug logging (optional)
+    console.log("OXAPAY CALLBACK RECEIVED:", body);
 
-    // REQUIRED FIELDS FROM OXAPAY
-    const track_id = data.track_id;
-    const status = data.status; // Example: "Paid"
-    const amount = data.amount;
-    const order_id = data.order_id; // We used: PAY-<userid>-<amount>
-
-    // Extract user.id from order_id format: PAY-12345678-5
-    const parts = order_id.split("-");
-    const userId = parts[1];  // <userid>
-    const userAmount = parts[2]; // <amount like 5,10,20,50>
-
-    // Only proceed if payment is completed
-    if (status === "Paid") {
-      console.log("Payment confirmed for user:", userId);
-
-      // TELEGRAM BOT API
-      const BOT_TOKEN = process.env.BOT_TOKEN;
-      const chatId = userId;
-
-      // Determine mode based on amount
-      let mode = "";
-      if (userAmount == 10) mode = "v2";
-      if (userAmount == 20) mode = "v3";
-      if (userAmount == 50) mode = "v4";
-
-      // Run /done command
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: `/done ${mode}`,
-          parse_mode: "Markdown"
-        })
-      });
+    if (!body || !body.status || !body.order_id) {
+      return res.status(400).json({ ok: false, error: "Missing required fields" });
     }
 
-    res.status(200).json({ ok: true });
+    const status = body.status;
+    const order_id = body.order_id;
+
+    // parse order_id format: "PAY-<userId>-<amount>"
+    const parts = order_id.split("-");
+    if (parts.length < 3) {
+      return res.status(400).json({ ok: false, error: "Invalid order_id format" });
+    }
+
+    const userId = parts[1];        // Telegram user ID
+    const amount = parseFloat(parts[2]) || 0;
+
+    console.log("Parsed callback:", { status, userId, amount });
+
+    // Only proceed for Paid status
+    if (status === "Paid") {
+
+      // Hardcoded bot token — replace with your bot token below
+      const BOT_TOKEN = "8569356669:AAGEDZm8sm_qZuUPu8T33xp2V92k35YsVY0";
+
+      // Determine done parameter by amount
+      let mode = "";
+      if (amount == 10) mode = "v2";
+      if (amount == 20) mode = "v3";
+      if (amount == 50) mode = "v4";
+
+      // Run /done with or without mode
+      const commandText = mode ? `/done ${mode}` : "/done";
+
+      // Call Telegram sendMessage with the /done text
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: userId,
+          text: commandText
+        })
+      });
+
+      console.log("Called /done for:", { userId, mode });
+    }
+
+    return res.status(200).json({ ok: true });
   } catch (err) {
-    console.log("Callback ERROR:", err);
-    res.status(500).json({ ok: false, error: err.toString() });
+    console.error("Callback error:", err);
+    return res.status(500).json({ ok: false, error: err.toString() });
   }
 }
