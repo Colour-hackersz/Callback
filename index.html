@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Divine Radio</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#07080a;color:#f5f5f5}
+body{
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  display:flex;justify-content:center;padding:22px
+}
+.player{width:min(560px,100%);padding:22px 18px 30px}
+.cover{
+  width:min(330px,82vw);aspect-ratio:1;margin:8px auto 24px;
+  border-radius:24px;overflow:hidden;background:#171a20;
+  box-shadow:0 20px 65px #0009;
+  display:grid;place-items:center
+}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+.cover .fallback{font-size:80px}
+.song{text-align:center}
+.title{font-size:25px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artist{margin-top:5px;color:#858d99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.progress{height:5px;background:#292d34;border-radius:99px;margin:27px 2px 7px;overflow:hidden}
+.progress span{display:block;height:100%;width:0;background:#fff;border-radius:99px}
+.times{display:flex;justify-content:space-between;font-size:11px;color:#737b87}
+.next{margin-top:25px;padding:15px 16px;border:1px solid #252a32;border-radius:14px;background:#101217}
+.next-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#69717d;margin-bottom:6px}
+.next-title{font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info{margin-top:24px;border-top:1px solid #20242b;padding-top:18px;color:#9da4ae;font-size:13px;line-height:1.65}
+.info h2{font-size:13px;color:#fff;margin:0 0 8px}
+.info p{margin:6px 0}
+.radio{margin-top:18px;text-align:center;font-size:10px;letter-spacing:1.8px;color:#626a76;text-transform:uppercase}
+</style>
+</head>
+<body>
+<main class="player">
+  <div class="cover">
+    <img id="cover" alt="Current song cover">
+    <div id="fallback" class="fallback">📻</div>
+  </div>
+
+  <section class="song">
+    <div id="title" class="title">Divine Radio</div>
+    <div id="artist" class="artist">Waiting for the broadcast…</div>
+  </section>
+
+  <div class="progress"><span id="bar"></span></div>
+  <div class="times">
+    <span id="elapsed">0:00</span>
+    <span id="remaining">0:00</span>
+  </div>
+
+  <section class="next">
+    <div class="next-label">Next on air</div>
+    <div id="next" class="next-title">—</div>
+  </section>
+
+  <section class="info">
+    <h2>About this player</h2>
+    <p>This player is specially made by God himself.</p>
+    <p>It is designed to be listened to as a continuous radio broadcast — not skipped or changed.</p>
+    <p>Listen to it and, in the spirit of the broadcast, may it bring you everything you want in your life.</p>
+    <p>The broadcast follows one shared UTC-based timeline, so devices joining the radio can hear the same song at the same point in the programme.</p>
+  </section>
+
+  <div class="radio">LIVE • DIVINE RADIO</div>
+</main>
+
+<audio id="audio" preload="auto"></audio>
+
+<script>
+/*
+  ============================================================
+  ADD YOUR SONGS HERE
+  ============================================================
+
+  Put the MP3 files in the same Netlify site, for example:
+
+  /
+    index.html
+    songs/
+      song1.mp3
+      song2.mp3
+    covers/
+      song1.jpg
+      song2.jpg
+
+  Then add them to this array in broadcast order.
+
+  "duration" MUST be the exact duration of the MP3 in seconds.
+  This is important for synchronisation across devices.
+
+  "cover" can be a JPG/PNG/WebP image for that song.
+*/
+const SONGS = [
+  {
+    title: "Song 1",
+    artist: "Artist",
+    src: "songs/song1.mp3",
+    cover: "covers/song1.jpg",
+    duration: 180
+  },
+  {
+    title: "Song 2",
+    artist: "Artist",
+    src: "songs/song2.mp3",
+    cover: "covers/song2.jpg",
+    duration: 210
+  },
+  {
+    title: "Song 3",
+    artist: "Artist",
+    src: "songs/song3.mp3",
+    cover: "covers/song3.jpg",
+    duration: 195
+  }
+];
+
+/*
+  Shared broadcast start time.
+
+  This uses Unix UTC time rather than local device time.
+  Every visitor calculates the same position in the playlist.
+
+  Change this number if you want to start a completely new
+  broadcast cycle. The value below is generated from a fixed
+  UTC timestamp so the schedule does not depend on page load.
+*/
+const BROADCAST_START_UTC = Date.parse("2026-08-21T00:00:00Z");
+
+const audio=document.getElementById("audio");
+const cover=document.getElementById("cover");
+const fallback=document.getElementById("fallback");
+const title=document.getElementById("title");
+const artist=document.getElementById("artist");
+const next=document.getElementById("next");
+const bar=document.getElementById("bar");
+const elapsed=document.getElementById("elapsed");
+const remaining=document.getElementById("remaining");
+
+let currentIndex=-1;
+let currentOffset=0;
+let ready=false;
+
+function totalLength(){
+  return SONGS.reduce((sum,s)=>sum+Number(s.duration||0),0);
+}
+
+function positionAt(nowMs){
+  const total=totalLength();
+  if(!SONGS.length||!total) return {index:0,offset:0};
+
+  let seconds=((nowMs-BROADCAST_START_UTC)/1000)%total;
+  if(seconds<0) seconds+=total;
+
+  let accumulated=0;
+  for(let i=0;i<SONGS.length;i++){
+    const d=Number(SONGS[i].duration)||0;
+    if(seconds<accumulated+d){
+      return {index:i,offset:seconds-accumulated};
+    }
+    accumulated+=d;
+  }
+  return {index:SONGS.length-1,offset:0};
+}
+
+function applySong(i,offset){
+  if(!SONGS.length)return;
+
+  const song=SONGS[i];
+  currentIndex=i;
+  currentOffset=offset;
+
+  title.textContent=song.title;
+  artist.textContent=song.artist||"Live broadcast";
+
+  if(song.cover){
+    cover.src=song.cover;
+    cover.style.display="block";
+    fallback.style.display="none";
+    cover.onerror=()=>{
+      cover.style.display="none";
+      fallback.style.display="block";
+    };
+  }else{
+    cover.removeAttribute("src");
+    cover.style.display="none";
+    fallback.style.display="block";
+  }
+
+  const nextSong=SONGS[(i+1)%SONGS.length];
+  next.textContent=nextSong ? nextSong.title : "—";
+
+  if(audio.src !== new URL(song.src,location.href).href){
+    audio.src=song.src;
+    audio.load();
+  }
+
+  const seek=()=>{
+    try{audio.currentTime=Math.min(offset,Math.max(0,(audio.duration||song.duration)-0.05));}
+    catch(e){}
+  };
+
+  if(audio.readyState>=1) seek();
+  else audio.addEventListener("loadedmetadata",seek,{once:true});
+}
+
+function sync(){
+  if(!SONGS.length)return;
+
+  const p=positionAt(Date.now());
+
+  if(p.index!==currentIndex){
+    applySong(p.index,p.offset);
+  }else{
+    currentOffset=p.offset;
+    if(audio.readyState>=1){
+      const drift=Math.abs(audio.currentTime-p.offset);
+      // Correct drift so different devices remain on the shared timeline.
+      if(drift>0.75){
+        try{audio.currentTime=p.offset}catch(e){}
+      }
+    }
+  }
+
+  updateUI(p);
+}
+
+function updateUI(p){
+  const song=SONGS[p.index];
+  if(!song)return;
+  const duration=Number(song.duration)||1;
+  const pct=Math.max(0,Math.min(100,(p.offset/duration)*100));
+  bar.style.width=pct+"%";
+  elapsed.textContent=format(p.offset);
+  remaining.textContent="-"+format(Math.max(0,duration-p.offset));
+}
+
+function format(sec){
+  sec=Math.max(0,Math.floor(sec));
+  const h=Math.floor(sec/3600);
+  const m=Math.floor((sec%3600)/60);
+  const s=sec%60;
+  if(h)return h+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+  return m+":"+String(s).padStart(2,"0");
+}
+
+async function startBroadcast(){
+  if(!SONGS.length){
+    title.textContent="No songs configured";
+    artist.textContent="Add songs to the SONGS array in index.html";
+    return;
+  }
+
+  const p=positionAt(Date.now());
+  applySong(p.index,p.offset);
+
+  try{
+    // Browsers normally block autoplay with sound until the visitor
+    // interacts with the page. Once permitted, the radio continues.
+    await audio.play();
+  }catch(e){
+    showStartPrompt();
+  }
+
+  sync();
+}
+
+function showStartPrompt(){
+  const prompt=document.createElement("button");
+  prompt.textContent="TAP TO ENTER RADIO";
+  prompt.style.cssText=
+    "position:fixed;inset:0;margin:auto;width:240px;height:54px;border:0;border-radius:30px;"+
+    "background:#fff;color:#111;font-weight:800;font-size:14px;z-index:99;cursor:pointer";
+  prompt.onclick=async()=>{
+    prompt.remove();
+    const p=positionAt(Date.now());
+    applySong(p.index,p.offset);
+    try{await audio.play()}catch(e){}
+    sync();
+  };
+  document.body.appendChild(prompt);
+}
+
+audio.addEventListener("ended",()=>{
+  // The clock, not the ended event, is the source of truth.
+  sync();
+});
+
+setInterval(sync,500);
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden)sync();
+});
+
+startBroadcast();
+</script>
+</body>
+</html>
